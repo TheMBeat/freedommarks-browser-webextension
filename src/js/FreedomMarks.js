@@ -18,10 +18,14 @@ document.addEventListener("DOMContentLoaded", function(event) {
         var settings = result.freedommarks_settings;
         if(debug) console.log(settings);
 
-        if(!settings.server_url) {
-            addNotification('error','Please set the Options for this extension');
+        if(typeof settings === 'undefined' || !settings.server_url) {
+            document.getElementById('missing-options').classList.remove('hide');
+            document.getElementById('content-wrapper').classList.add('hide');
             return false;
         }
+
+        document.getElementById('missing-options').classList.add('hide');
+        document.getElementById('content-wrapper').classList.remove('hide');
 
         server_url = settings.server_url;
         username = settings.username;
