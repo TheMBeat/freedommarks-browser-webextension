@@ -18,14 +18,10 @@ document.addEventListener("DOMContentLoaded", function(event) {
         var settings = result.freedommarks_settings;
         if(debug) console.log(settings);
 
-        if(typeof settings === 'undefined' || !settings.server_url) {
-            document.getElementById('missing-options').classList.remove('hide');
-            document.getElementById('content-wrapper').classList.add('hide');
+        if(!settings.server_url) {
+            addNotification('error','Please set the Options for this extension');
             return false;
         }
-
-        document.getElementById('missing-options').classList.add('hide');
-        document.getElementById('content-wrapper').classList.remove('hide');
 
         server_url = settings.server_url;
         username = settings.username;
@@ -139,11 +135,15 @@ document.addEventListener("DOMContentLoaded", function(event) {
 function testCorsEnabled(url){
     if(debug) console.log('function: ' + arguments.callee.name);
 
-    $.get( url, function( data, textStatus, request) {
-        var header = request.getResponseHeader('access-control-allow-origin');
+    const request = new Request(url, {
+        method: 'get'
+    });
+
+    fetch(request).then(response => {
+        const header = response.headers.get('access-control-allow-origin');
 
         if(typeof header !== 'undefined') {
-             console.log('CORS is not enabled for url: ' + url);
+            console.log('CORS is not enabled for url: ' + url);
         } else {
             console.log('CORS is enabled for url: ' + url);
             console.log(header);
@@ -278,52 +278,35 @@ function saveBookmark(browserTab){
     //var bookmarkurl = browserTab.url.trim().replace(/\/$/, "");
     if(debug) console.log('bookmarkurl: ' + bookmarkurl);
 
-    const saveBtn = document.getElementById('save-bookmark-button');
-    const prevText = saveBtn.innerText;
-    saveBtn.disabled = true;
-    saveBtn.innerText = 'Loading...';
+    const data = {
+        url: bookmarkurl,
+        title: $('#bookmark-title').val(),
+        description: $('#bookmark-description').val(),
+        item: {tags: getTagsArrayFromElement('bookmark-tags')},
+        is_public: true
+    };
 
-    $.ajax({
-        url: endpoint,
-        method: "POST",
-        //basic authentication
-        beforeSend: function (xhr) {
-            xhr.setRequestHeader("Authorization", "Basic " + btoa(username + ":" + password));
-        },
-        data: {
-            url: bookmarkurl,
-            title: $('#bookmark-title').val(),
-            description: $('#bookmark-description').val(),
-            item: {tags: getTagsArrayFromElement('bookmark-tags')},
-            is_public: true
-        },
-        dataType: 'json',
-    })
-    .success(function(result){
-        if (debug) console.log('success');
-        if (debug) console.log(result);
-        var bookmark = result.item;
-        if(bookmark.id){
-            $('#save-bookmark-button').hide();
-            $('#delete-bookmark-button').show();
-            $('#bookmark-id').val(bookmark.id);
-            addNotification('success','Saved');
-        } else {
-            addNotification('error','Not saved');
-        }
-    })
-    .error(function(XMLHttpRequest, status, errorThrown){
-        if(debug) {
-            console.log('ajax error');
-            console.log("Status: " + status);
-            console.log("Error: " + errorThrown);
-        }
-    })
-    .complete(function() {
-        saveBtn.disabled = false;
-        saveBtn.innerText = prevText;
-    });
-
+    apiRequest(endpoint, 'POST', data, username, password)
+        .then(result => {
+            if (debug) console.log('success');
+            if (debug) console.log(result);
+            var bookmark = result.item;
+            if(bookmark.id){
+                $('#save-bookmark-button').hide();
+                $('#delete-bookmark-button').show();
+                $('#bookmark-id').val(bookmark.id);
+                addNotification('success','Saved');
+            } else {
+                addNotification('error','Not saved');
+            }
+        })
+        .catch(error => {
+            if(debug) {
+                console.log('ajax error');
+                console.log("Status: " + error.status);
+                console.log("Error: " + error.statusText);
+            }
+        });
 }
 
 function searchByTermsOrTags(){
@@ -368,57 +351,40 @@ function searchBookmarks(endpoint, terms, tags, conjunction, page, listTag){
     if(debug) console.log('function: ' + arguments.callee.name);
     if(debug) testCorsEnabled(endpoint);
 
-    const searchBtn = document.getElementById('search-by-tags-button');
-    searchBtn.disabled = true;
-    searchBtn.innerText = 'Loading...';
-
     var select = ['id','url','title','tags', 'description', 'lastmodified'];
     if(terms.length == 0) {
         var terms = [""];
     }
 
-    $.ajax({
-        url: endpoint,
-        method: "GET",
-        //basic authentication
-        beforeSend: function (xhr) {
-            xhr.setRequestHeader("Authorization", "Basic " + btoa(username + ":" + password));
-        },
-        data: {
-            search: terms,
-            tags: tags,
-            conjunction: conjunction,
-            page: page,
-            limit: 30
-        },
-        dataType: 'json',
-    })
-    .success(function(result){
+    const data = {
+        search: terms,
+        tags: tags,
+        conjunction: conjunction,
+        page: page,
+        limit: 30
+    };
 
-        if(debug) console.log('success');
-        if(debug) console.log(result);
+    apiRequest(endpoint, 'GET', data, username, password)
+        .then(result => {
+            if(debug) console.log('success');
+            if(debug) console.log(result);
 
-        if(result.status == 'error'){
-            addNotification('Server Error',result.message);
-        } else {
-            var bookmarks = result.data;
-            if(debug) console.log(bookmarks);
-            makeBookmarksList(bookmarks, listTag);
-        }
-    })
-    .error(function(XMLHttpRequest, status, errorThrown){
-        if(debug) {
-            console.log('ajax error');
-            console.log("Status: " + status);
-            console.log("Error: " + errorThrown);
-        }
-    })
-    .complete(function() {
-        searchBtn.disabled = false;
-        searchBtn.innerText = 'Search';
-    });
+            if(result.status == 'error'){
+                addNotification('Server Error',result.message);
+            } else {
+                var bookmarks = result.data;
+                if(debug) console.log(bookmarks);
+                makeBookmarksList(bookmarks, listTag);
+            }
+        })
+        .catch(error => {
+            if(debug) {
+                console.log('ajax error');
+                console.log("Status: " + error.status);
+                console.log("Error: " + error.statusText);
+            }
+        });
 }
-
 
 function deleteBookmark(e, bookmarkId){
 
@@ -444,43 +410,25 @@ function deleteBookmark(e, bookmarkId){
         return false;
     }
 
-    var endpoint = server_url + '/index.php/apps/bookmarks/public/rest/v2/bookmark/' + bookmarkId;
+    const endpoint = server_url + '/index.php/apps/bookmarks/public/rest/v2/bookmark/' + bookmarkId;
+    const data = { id: bookmarkId };
 
-    const deleteBtn = document.getElementById('delete-bookmark-button');
-    deleteBtn.disabled = true;
-    deleteBtn.innerText = 'Loading...';
-
-    $.ajax({
-        method: "DELETE",
-        url: endpoint,
-        //basic authentication
-        beforeSend: function (xhr) {
-            xhr.setRequestHeader("Authorization", "Basic " + btoa(username + ":" + password));
-        },
-        data: {
-            id: bookmarkId
-        },
-        dataType: 'json'
-    })
-    .success(function(result){
-        $('#bookmark-' + bookmarkId).hide(); //this hides the deleted bookmark from the bookmark list
-        CurrentBrowserTab(fillForm);
-        $('#delete-bookmark-button').hide();
-        $('#save-bookmark-button').text("Add");
-        $('#save-bookmark-button').show();
-        addNotification('success','bookmark deleted');
-    })
-    .error(function(XMLHttpRequest, status, errorThrown){
-        if(debug) {
-            console.log('ajax error');
-            console.log("Status: " + status);
-            console.log("Error: " + errorThrown);
-        }
-    })
-    .complete(function() {
-        deleteBtn.disabled = false;
-        deleteBtn.innerText = 'Delete';
-    });
+    apiRequest(endpoint, 'DELETE', data, username, password)
+        .then(result => {
+            $('#bookmark-' + bookmarkId).hide(); //this hides the deleted bookmark from the bookmark list
+            CurrentBrowserTab(fillForm);
+            $('#delete-bookmark-button').hide();
+            $('#save-bookmark-button').text("Add");
+            $('#save-bookmark-button').show();
+            addNotification('success','bookmark deleted');
+        })
+        .catch(error => {
+            if(debug) {
+                console.log('ajax error');
+                console.log("Status: " + error.status);
+                console.log("Error: " + error.statusText);
+            }
+        });
 }
 
 // https://developer.mozilla.org/en-US/Add-ons/WebExtensions/API/notifications
